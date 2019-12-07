@@ -1,0 +1,107 @@
+import EecMetricsCalculations._
+import EecReadings.loadCsvFile
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions.col
+import org.scalatest._
+
+class UnitTests extends FunSuite {
+
+  private val master = "local[*]"
+  private val appName = "unitTests"
+
+  val spark: SparkSession =
+    new SparkSession
+    .Builder()
+      .appName(appName)
+      .master(master).getOrCreate()
+
+
+  test("load data from csv file should produce dataframe with correct size"){
+    val inputFilePath = "C:/Users/IDM/IdeaProjects/testunit/src/test/resources/input_data"
+    val inputDataDf = loadCsvFile(inputFilePath, true, spark)
+    println(inputDataDf.printSchema())
+
+    assert(inputDataDf.count() == 10)
+    assert(inputDataDf.take(1)(0)(1).equals("2019-06-01 14:00:00+00:00"))
+
+  }
+
+
+  test("Data should be gathered by correct time period"){
+    val inputFilePath = "C:/Users/IDM/IdeaProjects/testunit/src/test/resources/input_data"
+    val inputDataDf = loadCsvFile(inputFilePath, true, spark)
+    val outputDf = getGroupByTimeWindow(getColumnTypedDf(inputDataDf))
+
+    assert(outputDf.count == 2)
+  }
+
+
+  test("Energy consumption should be computed by meter and by time period"){
+    val inputFilePath = "C:/Users/IDM/IdeaProjects/testunit/src/test/resources/input_data"
+    val inputDataDf = loadCsvFile(inputFilePath, true, spark)
+    val outputDf = getGroupByTimeWindow(getColumnTypedDf(inputDataDf))
+      .withColumn("energy_consumption", computeEnergyConsumption(col("energyList")))
+
+    val actualEnergyConsumedByA = outputDf
+      .where(col("meter") === "A")
+      .select("energy_consumption")
+      .rdd.map(r => r(0).asInstanceOf[Double])
+      .collect.head
+
+    val actualEnergyConsumedByB = outputDf
+      .where(col("meter") === "B")
+      .select("energy_consumption")
+      .rdd.map(r => r(0).asInstanceOf[Double])
+      .collect.head
+
+    val expectedEnergyConsumedByA = 1000.0
+    val expectedEnergyConsumedByB = 1400.0
+
+    assert(actualEnergyConsumedByA == expectedEnergyConsumedByA)
+    assert(actualEnergyConsumedByB == expectedEnergyConsumedByB)
+  }
+
+
+  test("Mean power should be calculated by meter and by time period"){
+    val inputFilePath = "C:/Users/IDM/IdeaProjects/testunit/src/test/resources/input_data"
+    val inputDataDf = loadCsvFile(inputFilePath, true, spark)
+    val outputDf = getGroupByTimeWindow(getColumnTypedDf(inputDataDf))
+      .withColumn("mean_power", computeMeanPower(col("powerList")))
+
+    val actualMeanPowerOfA = outputDf
+      .where(col("meter") === "A")
+      .select("mean_power")
+      .rdd.map(r => r(0).asInstanceOf[Double])
+      .collect.head
+
+    val actualMeanPowerOfB = outputDf
+      .where(col("meter") === "B")
+      .select("mean_power")
+      .rdd.map(r => r(0).asInstanceOf[Double])
+      .collect.head
+
+    val expectedMeanPowerOfA = 1000.0
+    val expectedMeanPowerOfB = 1400.0
+
+    assert(actualMeanPowerOfA == expectedMeanPowerOfA)
+    assert(actualMeanPowerOfB == expectedMeanPowerOfB)
+  }
+
+
+  test("Computed metrics should be corresponded at the expected values"){
+    val inputFilePath = "C:/Users/IDM/IdeaProjects/testunit/src/test/resources/input_data"
+    val expectedDataPath = "C:/Users/IDM/IdeaProjects/testunit/src/test/resources/expected_data"
+
+    val inputDataDf = loadCsvFile(inputFilePath, true, spark)
+    val actualDf = getGroupByTimeWindow(getColumnTypedDf(inputDataDf))
+      .withColumn("energy_consumption", computeEnergyConsumption(col("energyList")))
+      .withColumn("mean_power", computeMeanPower(col("powerList")))
+      .withColumn("min_power", computeMinPower(col("powerList")))
+      .withColumn("max_power", computeMaxPower(col("powerList")))
+      .select("meter", "energy_consumption","mean_power", "min_power", "max_power")
+
+    val expectedDf = loadCsvFile(expectedDataPath, true, spark)
+
+    assert(actualDf.except(expectedDf).count == 0)
+  }
+}

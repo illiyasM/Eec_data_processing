@@ -1,0 +1,25 @@
+
+import org.scalatest._
+import EecReadings._
+import org.apache.spark.sql.SparkSession
+
+class UnitTests extends FunSuite {
+
+  private val master = "local[*]"
+  private val appName = "unitTests"
+
+  val spark: SparkSession =
+    new SparkSession
+    .Builder()
+      .appName(appName)
+      .master(master).getOrCreate()
+
+  test("load data from csv file should produce dataframe with correct size"){
+    val inputFilePath = "/src/test/resources/input_data"
+    val inputDataDf = loadCsvFile(inputFilePath, true, spark)
+
+    assert(inputDataDf.count() == 10)
+    assert(inputDataDf.take(1)(0)(1).equals("2019-06-01 14:00:00+00:00"))
+  }
+
+}

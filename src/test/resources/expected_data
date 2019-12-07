@@ -1,0 +1,4 @@
+meter,energy_consumption,mean_power,min_power,max_power
+A,1000.0,1000.0,400.0,1600.0
+B,1400.0,1400.0,400.0,2400.0
+
